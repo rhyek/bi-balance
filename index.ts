@@ -1,7 +1,7 @@
 import Decimal from 'decimal.js';
 import Koa from 'koa';
 import numeral from 'numeral';
-import puppeteer, { Browser } from 'puppeteer';
+import puppeteer, { Browser, Frame } from 'puppeteer';
 
 require('dotenv').config();
 
@@ -17,6 +17,22 @@ app.use(async ctx => {
   }
 
   const page = await browser.newPage();
+
+  const getFrame = (name: string): Promise<Frame> => {
+    return new Promise(resolve => {
+      const listener = (frame: Frame) => {
+        if (frame.name() === name) {
+          page.removeListener('framenavigated', listener);
+          resolve(frame);
+        }
+      };
+      const found = page.frames().find(frame => frame.name() === name);
+      if (found) {
+        return resolve(found);
+      }
+      page.on('framenavigated', listener);
+    });
+  };
 
   page.on('dialog', dialog => {
     dialog.accept();
@@ -49,7 +65,7 @@ app.use(async ctx => {
   await loginButton!.click();
   await loginPromise;
 
-  const tipoCambioFrame = page.frames().find(frame => frame.name() === 'tipocambio')!;
+  const tipoCambioFrame = await getFrame('tipocambio');
   const ratesText = await tipoCambioFrame.evaluate(
     td => td.textContent,
     await tipoCambioFrame.waitForSelector('table > tbody > tr > td')
@@ -68,7 +84,7 @@ app.use(async ctx => {
     });
   });
 
-  const contentsFrame = page.frames().find(frame => frame.name() === 'contents')!;
+  const contentsFrame = await getFrame('contents');
   const subMenuLink = await contentsFrame.waitForSelector('#divSlide0 > a', { visible: true });
   await subMenuLink.click();
   const accountsLink = await contentsFrame.waitForSelector('#divSlideSub0_0 > a', {
@@ -79,7 +95,7 @@ app.use(async ctx => {
 
   const accounts = [];
 
-  const mainFrame = page.frames().find(frame => frame.name() === 'main')!;
+  const mainFrame = await getFrame('main');
   const table = await mainFrame.waitForSelector('table table');
   const accountTRs = await table.$$('table table > tbody > tr[align=right]');
 
