@@ -1,11 +1,11 @@
-const Decimal = require('decimal.js');
-const numeral = require('numeral');
-const puppeteer = require('puppeteer');
-const Koa = require('koa');
+import Decimal from 'decimal.js';
+import Koa from 'koa';
+import numeral from 'numeral';
+import puppeteer, { Browser } from 'puppeteer';
 
 require('dotenv').config();
 
-let browser = null;
+let browser: Browser | null = null;
 
 const app = new Koa();
 
@@ -27,14 +27,13 @@ app.use(async ctx => {
     await page.goto('https://www.bienlinea.bi.com.gt');
     loginFrame = page.frames().find(frame => frame.name() === 'login');
   }
-  await (await loginFrame.$('#cnempresa')).type(process.env.CNEMPRESA);
-  await (await loginFrame.$('#cusuario')).type(process.env.CUSUARIO);
-  await (await loginFrame.$('#ccontra')).type(process.env.CCONTRA);
+  await (await loginFrame.$('#cnempresa'))!.type(process.env.CNEMPRESA!);
+  await (await loginFrame.$('#cusuario'))!.type(process.env.CUSUARIO!);
+  await (await loginFrame.$('#ccontra'))!.type(process.env.CCONTRA!);
   const loginPromise = new Promise(resolve => {
     let done = 0;
     page.on('requestfinished', async request => {
       if (request.url() === 'https://www.bienlinea.bi.com.gt/app/navmenu/navmenu.asp') {
-        menuHTML = await request.response().text();
         done++;
       } else if (request.url() === 'https://www.bienlinea.bi.com.gt/app/menu.asp') {
         done++;
@@ -47,10 +46,10 @@ app.use(async ctx => {
   });
 
   const loginButton = await loginFrame.$('#btnEnviar');
-  await loginButton.click();
+  await loginButton!.click();
   await loginPromise;
 
-  const tipoCambioFrame = page.frames().find(frame => frame.name() === 'tipocambio');
+  const tipoCambioFrame = page.frames().find(frame => frame.name() === 'tipocambio')!;
   const ratesText = await tipoCambioFrame.evaluate(
     td => td.textContent,
     await tipoCambioFrame.waitForSelector('table > tbody > tr > td')
@@ -63,14 +62,13 @@ app.use(async ctx => {
   const accountsPromise = new Promise(resolve => {
     page.on('requestfinished', async request => {
       if (request.url().startsWith('https://www.bienlinea.bi.com.gt/cuentas/blncuentas.asp')) {
-        accountsHTML = await request.response().text();
         page.removeAllListeners('requestfinished');
         resolve();
       }
     });
   });
 
-  const contentsFrame = page.frames().find(frame => frame.name() === 'contents');
+  const contentsFrame = page.frames().find(frame => frame.name() === 'contents')!;
   const subMenuLink = await contentsFrame.waitForSelector('#divSlide0 > a', { visible: true });
   await subMenuLink.click();
   const accountsLink = await contentsFrame.waitForSelector('#divSlideSub0_0 > a', {
@@ -79,7 +77,7 @@ app.use(async ctx => {
   await accountsLink.click();
   await accountsPromise;
 
-  const mainFrame = page.frames().find(frame => frame.name() === 'main');
+  const mainFrame = page.frames().find(frame => frame.name() === 'main')!;
   const accountNumber = await mainFrame.evaluate(
     a => a.textContent.trim(),
     await mainFrame.waitForSelector(
@@ -90,6 +88,8 @@ app.use(async ctx => {
     td => td.textContent.trim(),
     await mainFrame.waitForSelector('table table > tbody > tr:nth-of-type(3) > td:nth-of-type(4)')
   );
+
+  await page.close();
 
   const Q = parseFloat(availableRaw.replace(/,/g, ''));
   const available = {
@@ -102,7 +102,7 @@ app.use(async ctx => {
   };
 
   const endTime = new Date();
-  const duration = endTime - startTime;
+  const duration = endTime.getTime() - startTime.getTime();
 
   const result = {
     accounts: [
