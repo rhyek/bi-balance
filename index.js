@@ -1,13 +1,21 @@
 const Decimal = require('decimal.js');
 const numeral = require('numeral');
 const puppeteer = require('puppeteer');
+const Koa = require('koa');
 
 require('dotenv').config();
 
-async function main() {
+let browser = null;
+
+const app = new Koa();
+
+app.use(async ctx => {
   const startTime = new Date();
 
-  const browser = await puppeteer.launch({ headless: false });
+  if (!browser) {
+    browser = await puppeteer.launch();
+  }
+
   const page = await browser.newPage();
 
   page.on('dialog', dialog => {
@@ -43,7 +51,10 @@ async function main() {
   await loginPromise;
 
   const tipoCambioFrame = page.frames().find(frame => frame.name() === 'tipocambio');
-  const ratesText = await tipoCambioFrame.$eval('table > tbody > tr > td', td => td.textContent);
+  const ratesText = await tipoCambioFrame.evaluate(
+    td => td.textContent,
+    await tipoCambioFrame.waitForSelector('table > tbody > tr > td')
+  );
   const exchangeRate = parseFloat(ratesText.match(/Venta: (.+)/)[1]);
 
   const accountsPromise = new Promise(resolve => {
@@ -87,19 +98,24 @@ async function main() {
     $: numeral(available.$).format('0,0.00'),
   };
 
-  await browser.close();
-
   const endTime = new Date();
   const duration = endTime - startTime;
 
   const result = {
-    accountNumber,
-    available,
-    formatted,
+    accounts: [
+      {
+        accountNumber,
+        available,
+        formatted,
+      },
+    ],
+    exchangeRate,
     duration,
   };
 
-  console.log(JSON.stringify(result, null, 2));
-}
+  ctx.body = result;
+});
 
-main();
+app.listen(3000, () => {
+  console.log('Listening on port 3000.');
+});
