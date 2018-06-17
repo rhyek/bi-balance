@@ -55,7 +55,10 @@ app.use(async ctx => {
     td => td.textContent,
     await tipoCambioFrame.waitForSelector('table > tbody > tr > td')
   );
-  const exchangeRate = parseFloat(ratesText.match(/Venta: (.+)/)[1]);
+  const exchangeRate = {
+    buy: parseFloat(ratesText.match(/Compra: (.+)/)[1]),
+    sell: parseFloat(ratesText.match(/Venta: (.+)/)[1]),
+  };
 
   const accountsPromise = new Promise(resolve => {
     page.on('requestfinished', async request => {
@@ -91,7 +94,7 @@ app.use(async ctx => {
   const Q = parseFloat(availableRaw.replace(/,/g, ''));
   const available = {
     Q,
-    $: parseFloat(new Decimal(Q).div(exchangeRate).toFixed(2)),
+    $: parseFloat(new Decimal(Q).div(exchangeRate.sell).toFixed(2)),
   };
   const formatted = {
     Q: numeral(available.Q).format('0,0.00'),
