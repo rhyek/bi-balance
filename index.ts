@@ -1,22 +1,21 @@
 import Decimal from 'decimal.js';
 import Koa from 'koa';
+import fetch from 'node-fetch';
 import numeral from 'numeral';
 import puppeteer, { Browser, Frame } from 'puppeteer';
+import WebSocket from 'ws';
 
 require('dotenv').config();
 
 let browser: Browser | null = null;
 
-const app = new Koa();
-
-app.use(async ctx => {
+async function queryBank() {
   const startTime = new Date();
 
-  if (!browser) {
-    browser = await puppeteer.launch();
-  }
-
-  const page = await browser.newPage();
+  const page = await browser!.newPage();
+  page.setUserAgent(
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.87 Safari/537.36'
+  );
 
   const getFrame = (name: string): Promise<Frame> => {
     return new Promise(resolve => {
@@ -28,9 +27,10 @@ app.use(async ctx => {
       };
       const found = page.frames().find(frame => frame.name() === name);
       if (found) {
-        return resolve(found);
+        resolve(found);
+      } else {
+        page.on('framenavigated', listener);
       }
-      page.on('framenavigated', listener);
     });
   };
 
@@ -147,9 +147,66 @@ app.use(async ctx => {
     duration,
   };
 
+  return result;
+}
+
+interface Notification {
+  thread_id: string;
+  title: string;
+  body: string;
+  timestamp: number;
+}
+
+const app = new Koa();
+
+app.use(async ctx => {
+  const result = await queryBank();
   ctx.body = result;
 });
 
-app.listen(3000, () => {
-  console.log('Listening on port 3000.');
-});
+(async () => {
+  browser = await puppeteer.launch();
+
+  const ws = new WebSocket(
+    `wss://stream.pushbullet.com/websocket/${process.env.PUSHBULLET_API_KEY}`
+  );
+  ws.on('message', async data => {
+    try {
+      const json = JSON.parse(data as string);
+      if (
+        json.type === 'push' &&
+        json.push.type === 'sms_changed' &&
+        json.push.notifications.length > 0 &&
+        json.push.notifications.some(
+          (notification: Notification) =>
+            // notification.title === '+2424' &&
+            notification.body.includes('debito') || notification.body.includes('credito')
+        )
+      ) {
+        console.log('ws message', data);
+        const result = await queryBank();
+        await fetch('https://api.pushbullet.com/v2/pushes', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Token': process.env.PUSHBULLET_API_KEY!,
+          },
+          body: JSON.stringify({
+            type: 'note',
+            title: 'bi-balance',
+            body: `Q. ${result.accounts[0].available.formatted.Q}\n$ ${
+              result.accounts[0].available.formatted.$
+            }`,
+          }),
+        });
+        console.log('notified', JSON.stringify(result, null, 2));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  });
+
+  app.listen(3000, () => {
+    console.log('Listening on port 3000.');
+  });
+})();
