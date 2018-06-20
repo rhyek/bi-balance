@@ -14,7 +14,7 @@ app.use(async (ctx, next) => {
   ctx.assert(
     ctx.headers['x-access-key'] === process.env.ACCESS_KEY,
     401,
-    'No authentication provided.'
+    'No authentication provided.1'
   );
   await next();
 });
