@@ -31,7 +31,7 @@ export default function queryBank(): Promise<Result> {
   return new Promise(async (mainResolve, mainReject) => {
     try {
       if (!browser) {
-        browser = await puppeteer.launch();
+        browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
       }
 
       const startTime = new Date();
