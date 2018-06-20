@@ -1,2 +1,2 @@
 #!/bin/bash
-git pull && pm2 reload bi-balance
+git pull && npm run build && pm2 reload bi-balance
