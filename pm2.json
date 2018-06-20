@@ -2,7 +2,7 @@
   "apps": [
     {
       "name": "bi-balance",
-      "script": "yarn",
+      "script": "npm",
       "args": "start"
     }
   ]
