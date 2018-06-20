@@ -11,7 +11,6 @@ app.use(async (ctx, next) => {
 });
 
 app.use(async (ctx, next) => {
-  console.log(ctx.headers);
   ctx.assert(
     ctx.headers['x-access-key'] === process.env.ACCESS_KEY,
     401,
