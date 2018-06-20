@@ -1,0 +1,9 @@
+{
+  "apps": [
+    {
+      "name": "bi-balance",
+      "script": "yarn",
+      "args": "start"
+    }
+  ]
+}
