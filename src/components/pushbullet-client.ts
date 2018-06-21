@@ -24,9 +24,11 @@ ws.on('message', async data => {
     ) {
       console.log('ws message', data);
       const result = await queryBank();
-      const message = `Q. ${result.accounts[0].available.formatted.Q}\n$ ${
-        result.accounts[0].available.formatted.$
-      }`;
+      const message = [
+        `Q. ${result.accounts[0].available.formatted.Q}`,
+        `$ ${result.accounts[0].available.formatted.$}`,
+        `${result.duration}ms`,
+      ].join('\n');
       await fetch('https://api.pushbullet.com/v2/pushes', {
         method: 'POST',
         headers: {
