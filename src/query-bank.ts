@@ -2,28 +2,27 @@ import Decimal from 'decimal.js';
 import numeral from 'numeral';
 import puppeteer, { Browser, Frame } from 'puppeteer';
 
-interface Result {
+type currencySymbol = 'Q' | '$';
+
+type Amounts = {
+  raw: { [key in currencySymbol]?: number };
+  formatted: { [key in currencySymbol]?: string };
+};
+
+type Result = {
   accounts: Array<{
     number: string;
     currency: string;
     rateUsed: string;
-    available: {
-      raw: {
-        Q: number;
-        $: number;
-      };
-      formatted: {
-        Q: string;
-        $: string;
-      };
-    };
+    available: Amounts;
   }>;
+  total: Amounts;
   exchangeRates: {
     buy: number;
     sell: number;
   };
   duration: number;
-}
+};
 
 let browser: Browser | null = null;
 
@@ -128,52 +127,118 @@ export default function queryBank(): Promise<Result> {
       const table = await mainFrame.waitForSelector('table table');
       const accountTRs = await table.$$('table table > tbody > tr[align=right]');
 
+      const currencies: Array<{
+        raw: 'Q.' | 'US$';
+        clean: currencySymbol;
+        rate: keyof typeof exchangeRates;
+        converter: (n: number, rate: number) => number;
+      }> = [
+        {
+          raw: 'Q.',
+          clean: 'Q',
+          rate: 'sell',
+          converter: (n, r) =>
+            new Decimal(n)
+              .times(r)
+              .toDecimalPlaces(2)
+              .toNumber(),
+        },
+        {
+          raw: 'US$',
+          clean: '$',
+          rate: 'buy',
+          converter: (n, r) =>
+            new Decimal(n)
+              .div(r)
+              .toDecimalPlaces(2)
+              .toNumber(),
+        },
+      ];
+
       for (const tr of accountTRs) {
         const currencyRaw: string = await mainFrame.evaluate(
           (td: HTMLTableCellElement) => td.textContent,
           await tr.$('td:nth-of-type(1)')
         );
-        const currency = currencyRaw.match(/(.+)\./)![1];
+        const currency = currencies.find(c => c.raw === currencyRaw);
 
-        const number: string = await mainFrame.evaluate(
-          (a: HTMLAnchorElement) => a.textContent!.trim(),
-          await tr.$('td:nth-of-type(2) > a')
-        );
-        const availableRaw = await mainFrame.evaluate(
-          (td: HTMLTableCellElement) => td.textContent!.trim(),
-          await tr.$('td:nth-of-type(4)')
-        );
+        if (currency) {
+          const number: string = await mainFrame.evaluate(
+            (a: HTMLAnchorElement) => a.textContent!.trim(),
+            await tr.$('td:nth-of-type(2) > a')
+          );
+          const availableRaw = await mainFrame.evaluate(
+            (td: HTMLTableCellElement) => td.textContent!.trim(),
+            await tr.$('td:nth-of-type(4)')
+          );
 
-        const rateUsed = currency === 'Q' ? 'sell' : 'buy';
+          const tempAvailable: Amounts = {
+            raw: {},
+            formatted: {},
+          };
 
-        const Q = parseFloat(availableRaw.replace(/,/g, ''));
-        const $ = parseFloat(new Decimal(Q).div(exchangeRates[rateUsed]).toFixed(2));
+          const sortedCurrencies = currencies.slice().sort((a, b) => {
+            return a === currency ? -1 : 1;
+          });
 
-        const available = {
-          raw: { Q, $ },
-          formatted: {
-            Q: numeral(Q).format('0,0.00'),
-            $: numeral($).format('0,0.00'),
-          },
-        };
+          let base: number | null = null;
+          for (const c of sortedCurrencies) {
+            let result;
+            if (c === currency) {
+              base = parseFloat(availableRaw.replace(/,/g, ''));
+              result = base;
+            } else {
+              if (base != null) {
+                result = c.converter(base, exchangeRates[currency.rate]);
+              } else {
+                throw new Error('base unknown');
+              }
+            }
+            tempAvailable.raw[c.clean] = result;
+            tempAvailable.formatted[c.clean] = numeral(result).format('0,0.00');
+          }
 
-        accounts.push({
-          number,
-          currency,
-          rateUsed,
-          available,
-        });
+          const available: Amounts = {
+            raw: {},
+            formatted: {},
+          };
+
+          for (const c of currencies) {
+            available.raw[c.clean] = tempAvailable.raw[c.clean];
+            available.formatted[c.clean] = tempAvailable.formatted[c.clean];
+          }
+
+          accounts.push({
+            number,
+            currency: currency.clean,
+            rateUsed: currency.rate,
+            available,
+          });
+        }
       }
 
       await page.close();
 
       clearTimeout(killTimer);
 
+      const total: Amounts = { raw: {}, formatted: {} };
+      for (const currency of currencies) {
+        const sum = accounts
+          .reduce(
+            (previous, current) => previous.add(current.available.raw[currency.clean]!),
+            new Decimal(0)
+          )
+          .toNumber();
+        total.raw[currency.clean] = sum;
+        total.formatted[currency.clean] = numeral(sum).format('0,0.00');
+      }
+
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
       const result = {
         accounts,
+        total,
         exchangeRates,
         duration,
       };

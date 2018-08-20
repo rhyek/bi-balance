@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import WebSocket from 'ws';
+import Raven from 'raven';
 import queryBank from '../query-bank';
 
 interface Notification {
@@ -9,6 +10,8 @@ interface Notification {
   timestamp: number;
 }
 
+const keywords = ['consumo', 'reversion', 'retiro', 'debito', 'credito'];
+
 const ws = new WebSocket(`wss://stream.pushbullet.com/websocket/${process.env.PUSHBULLET_API_KEY}`);
 ws.on('message', async data => {
   try {
@@ -17,16 +20,18 @@ ws.on('message', async data => {
       json.type === 'push' &&
       json.push.type === 'sms_changed' &&
       json.push.notifications.length > 0 &&
-      json.push.notifications.some((notification: Notification) =>
-        // notification.title === '+2424' &&
-        notification.body.toLowerCase().includes('bimovil')
+      json.push.notifications.some(
+        (notification: Notification) =>
+          (notification.title === '30274143' && notification.body.toLowerCase().includes('ec')) ||
+          (notification.title === '+2424' &&
+            keywords.some(keyword => notification.body.toLowerCase().includes(keyword)))
       )
     ) {
       console.log('ws message', data);
       const result = await queryBank();
       const message = [
-        `Q. ${result.accounts[0].available.formatted.Q}`,
-        `$ ${result.accounts[0].available.formatted.$}`,
+        `Q. ${result.total.formatted.Q}`,
+        `$ ${result.total.formatted.$}`,
         `${result.duration}ms`,
       ].join('\n');
       await fetch('https://api.pushbullet.com/v2/pushes', {
@@ -43,7 +48,15 @@ ws.on('message', async data => {
       });
       console.log('notified', message);
     }
-  } catch (e) {
-    console.error(e);
+  } catch (error) {
+    if (process.env.SENTRY_ENABLED === 'true') {
+      Raven.captureException(error, {
+        extra: {
+          message: data,
+        },
+      });
+    } else {
+      console.error(error);
+    }
   }
 });
