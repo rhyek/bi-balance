@@ -43,7 +43,7 @@ export default function queryBank(): Promise<Result> {
       const killTimer = setTimeout(async () => {
         await page.screenshot({ path: 'screenshot.png' });
         mainReject(new Error('Took too long.'));
-      }, 40000);
+      }, 90000);
 
       const getFrame = (name: string): Promise<Frame> => {
         return new Promise(resolve => {
