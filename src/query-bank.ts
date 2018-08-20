@@ -74,17 +74,22 @@ export default function queryBank(): Promise<Result> {
       await (await loginFrame.$('#cnempresa'))!.type(process.env.CNEMPRESA!);
       await (await loginFrame.$('#cusuario'))!.type(process.env.CUSUARIO!);
       await (await loginFrame.$('#ccontra'))!.type(process.env.CCONTRA!);
-      const loginPromise = new Promise(resolve => {
+      const loginPromise = new Promise((resolve, reject) => {
         let done = 0;
         page.on('requestfinished', async request => {
-          if (request.url() === 'https://www.bienlinea.bi.com.gt/app/navmenu/navmenu.asp') {
-            done++;
-          } else if (request.url() === 'https://www.bienlinea.bi.com.gt/app/menu.asp') {
-            done++;
-          }
-          if (done === 2) {
-            page.removeAllListeners('requestfinished');
-            resolve();
+          const url = request.url();
+          if (url.includes('errorLogin.aspx')) {
+            reject(new Error('Wrong password.'));
+          } else {
+            if (url.endsWith('app/navmenu/navmenu.asp')) {
+              done++;
+            } else if (url.endsWith('app/menu.asp')) {
+              done++;
+            }
+            if (done === 2) {
+              page.removeAllListeners('requestfinished');
+              resolve();
+            }
           }
         });
       });
